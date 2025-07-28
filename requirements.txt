@@ -7,3 +7,4 @@ scikit-learn==1.6.1
 xgboost==3.0.2
 firebase_admin==7.0.0
 PyMuPDF==1.26.3
+pillow==9.4.0
