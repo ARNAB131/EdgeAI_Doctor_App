@@ -1,7 +1,6 @@
-# utils/pdf_report.py
-
 from fpdf import FPDF
 from datetime import datetime
+import os
 
 def generate_pdf(vitals, prediction):
     pdf = FPDF()
@@ -21,8 +20,13 @@ def generate_pdf(vitals, prediction):
     pdf.set_font("Arial", "", 12)
 
     for v in vitals:
+        sensor_type = v.get("sensor_type", "Unknown")
+        value = v.get("value", "N/A")
+        unit = v.get("unit", "")
+        quality = v.get("quality_score", 0)
+
         pdf.cell(0, 10,
-                 f"{v.sensor_type}: {v.value:.2f} {v.unit} | Quality: {v.quality_score:.2f}",
+                 f"{sensor_type}: {value} {unit} | Quality: {quality:.2f}",
                  ln=True)
 
     # Prediction section
@@ -33,16 +37,19 @@ def generate_pdf(vitals, prediction):
         pdf.set_font("Arial", "", 12)
 
         pdf.cell(0, 10,
-                 f"Type: {prediction.prediction_type} | Value: {prediction.predicted_value:.2f}",
+                 f"Type: {prediction.get('prediction_type', 'N/A')} | Value: {prediction.get('predicted_value', 0):.2f}",
                  ln=True)
         pdf.cell(0, 10,
-                 f"Confidence: {prediction.confidence:.2f} | Uncertainty: {prediction.uncertainty:.2f}",
+                 f"Confidence: {prediction.get('confidence', 0):.2f} | Uncertainty: {prediction.get('uncertainty', 0):.2f}",
                  ln=True)
+        risk_factors = prediction.get('risk_factors', [])
         pdf.cell(0, 10,
-                 f"Risk Factors: {', '.join(prediction.risk_factors) if prediction.risk_factors else 'None'}",
+                 f"Risk Factors: {', '.join(risk_factors) if risk_factors else 'None'}",
                  ln=True)
 
-    # Save PDF
+    # Ensure data folder exists
+    os.makedirs("data", exist_ok=True)
     file_path = f"data/report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     pdf.output(file_path)
+
     return file_path
