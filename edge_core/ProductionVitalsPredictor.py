@@ -42,33 +42,51 @@ class ProductionVitalsPredictor:
             return [0] * len(features_df)  # Dummy output
         return self.model.predict(features_df)
 
-    def predict_trend(self, patient_id, history):
-        """Predict future trend from vitals history"""
-        if not history:
-            return None
+   def predict_trend(self, patient_id, history):
+    """Predict future trend from vitals history"""
+    if not history:
+        return None
 
-        df = pd.DataFrame(history)
+    df = pd.DataFrame(history)
 
-        numeric_df = pd.DataFrame({
-            "heart_rate": pd.to_numeric(df[df["sensor"] == "ECG"]["value"], errors="coerce").tail(1).fillna(0),
-            "bp_systolic": pd.to_numeric(df[df["sensor"].isin(["BP_SYS", "BP"])]["value"].apply(
-                lambda x: str(x).split("/")[0] if "/" in str(x) else x
-            ), errors="coerce").tail(1).fillna(0),
-            "bp_diastolic": pd.to_numeric(df[df["sensor"].isin(["BP_DIA", "BP"])]["value"].apply(
-                lambda x: str(x).split("/")[1] if "/" in str(x) else x
-            ), errors="coerce").tail(1).fillna(0),
-            "oxygen_saturation": pd.to_numeric(df[df["sensor"] == "SpO2"]["value"], errors="coerce").tail(1).fillna(0),
-            "temperature": pd.Series([36.5])  # Placeholder
-        })
+    # Define required columns with defaults
+    feature_template = pd.DataFrame([{
+        "heart_rate": 70,
+        "bp_systolic": 120,
+        "bp_diastolic": 80,
+        "oxygen_saturation": 98,
+        "temperature": 36.5
+    }])
 
-        numeric_df = numeric_df.fillna(0)
+    # Fill from history if available
+    try:
+        hr = pd.to_numeric(df[df["sensor"] == "ECG"]["value"], errors="coerce").iloc[-1]
+        feature_template.loc[0, "heart_rate"] = hr
+    except:
+        pass
 
-        y_pred = self.predict(numeric_df)
+    try:
+        bp_values = df[df["sensor"].isin(["BP_SYS", "BP"])]["value"].iloc[-1]
+        if "/" in str(bp_values):
+            sys_val, dia_val = bp_values.split("/")
+            feature_template.loc[0, "bp_systolic"] = pd.to_numeric(sys_val, errors="coerce")
+            feature_template.loc[0, "bp_diastolic"] = pd.to_numeric(dia_val, errors="coerce")
+    except:
+        pass
 
-        return {
-            "prediction_type": "Vitals Trend",
-            "predicted_value": float(y_pred[0]) if len(y_pred) else 0,
-            "confidence": 0.85,
-            "uncertainty": 0.15,
-            "risk_factors": []
-        }
+    try:
+        spo2 = pd.to_numeric(df[df["sensor"] == "SpO2"]["value"], errors="coerce").iloc[-1]
+        feature_template.loc[0, "oxygen_saturation"] = spo2
+    except:
+        pass
+
+    # Predict
+    y_pred = self.predict(feature_template)
+
+    return {
+        "prediction_type": "Vitals Trend",
+        "predicted_value": float(y_pred[0]) if len(y_pred) else 0,
+        "confidence": 0.85,
+        "uncertainty": 0.15,
+        "risk_factors": []
+    }
