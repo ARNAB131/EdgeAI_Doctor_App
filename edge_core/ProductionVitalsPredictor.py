@@ -3,7 +3,7 @@ import pickle
 import pandas as pd
 
 class ProductionVitalsPredictor:
-    """Predicts patient vitals"""
+    """Predicts patient vitals trends"""
 
     def __init__(self, config):
         model_path = config.model_path
@@ -22,9 +22,38 @@ class ProductionVitalsPredictor:
                 self.model = pickle.load(f)
 
     def predict(self, features: pd.DataFrame):
+        """Generic prediction."""
         if self.model is None:
             print("⚠️ No model loaded. Returning dummy prediction.")
-            return [0] * len(features)  # Dummy prediction to avoid crash
+            return [0] * len(features)
         return self.model.predict(features)
+
+    def predict_trend(self, patient_id, history):
+        """Predict trend based on patient history."""
+        if not history:
+            return None
+
+        # Convert history to DataFrame
+        df_history = pd.DataFrame(history)
+        
+        # Select numeric values
+        numeric_df = df_history.select_dtypes(include="number")
+
+        if numeric_df.empty:
+            print(f"⚠️ No numeric data found for patient {patient_id}")
+            return None
+
+        prediction_value = self.predict(numeric_df.tail(1))
+
+        # Determine risk level
+        risk_level = "high" if prediction_value[0] > 100 else "normal"
+
+        return {
+            "patient_id": patient_id,
+            "prediction_type": "trend",
+            "predicted_value": float(prediction_value[0]),
+            "confidence": 0.85,  # Dummy confidence for now
+            "risk": risk_level
+        }
 
 
