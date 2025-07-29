@@ -61,7 +61,29 @@ if uploaded:
     df_uploaded = pd.read_csv(uploaded)
     st.subheader("📄 Uploaded Data")
     st.dataframe(df_uploaded)
-    st.sidebar.markdown("✅ Predictions from upload coming soon...")
+
+    # --------------------------
+    # PREDICT FROM CSV
+    # --------------------------
+    if all(col in df_uploaded.columns for col in predictor.required_features):
+        try:
+            csv_predictions = predictor.predict(df_uploaded)
+            df_uploaded["Prediction"] = csv_predictions
+
+            st.subheader("🔮 Predictions from Uploaded Data")
+            st.dataframe(df_uploaded)
+
+            # Download predictions as CSV
+            st.download_button(
+                "📥 Download Predictions CSV",
+                df_uploaded.to_csv(index=False),
+                file_name="predictions.csv",
+                mime="text/csv"
+            )
+        except Exception as e:
+            st.error(f"❌ Prediction failed: {e}")
+    else:
+        st.warning(f"⚠️ Uploaded CSV is missing required columns: {predictor.required_features}")
 
 # --------------------------
 # SIMULATE VITALS
