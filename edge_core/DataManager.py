@@ -9,11 +9,11 @@ class DataManager:
         self.data_path = config.data_path
         self.vitals_history = {}  # In-memory cache
 
-        # Standard model features
+        # Define consistent ML model input features
         self.feature_columns = ["heart_rate", "bp_systolic", "bp_diastolic", "oxygen_saturation", "temperature"]
 
     def load_data(self):
-        """Load CSV data from file."""
+        """Load CSV data from file safely."""
         if os.path.exists(self.data_path):
             try:
                 return pd.read_csv(self.data_path)
@@ -27,7 +27,7 @@ class DataManager:
         df.to_csv(self.data_path, index=False)
 
     def store_vital_sign(self, vital):
-        """Store vitals in wide format (all features in one row)."""
+        """Store vitals in a consistent wide-format for ML prediction."""
         pid = getattr(vital, "patient_id", vital.get("patient_id"))
         timestamp = getattr(vital, "timestamp", vital.get("timestamp", datetime.now()))
         sensor_type = getattr(vital, "sensor_type", vital.get("sensor_type"))
@@ -36,7 +36,7 @@ class DataManager:
         # Load existing data
         df = self.load_data()
 
-        # Map sensor type to feature column
+        # Map sensor types to ML feature columns
         mapping = {
             "ECG": "heart_rate",
             "BP_SYS": "bp_systolic",
@@ -44,12 +44,12 @@ class DataManager:
             "SpO2": "oxygen_saturation",
             "Temp": "temperature"
         }
-        feature_col = mapping.get(sensor_type, None)
+        feature_col = mapping.get(sensor_type)
 
         if not feature_col:
-            return  # Skip unknown sensors
+            return  # Skip if unknown sensor type
 
-        # Update or create patient row
+        # Update or create patient record
         if pid in df["patient_id"].values:
             idx = df[df["patient_id"] == pid].index[-1]
             df.at[idx, feature_col] = value
@@ -70,5 +70,5 @@ class DataManager:
         return patient_data.tail(limit).to_dict("records")
 
     def store_prediction(self, prediction):
-        """Optionally store predictions later."""
+        """Store predictions if needed in future."""
         pass
