@@ -33,7 +33,7 @@ def generate_pdf(vitals, prediction):
     if prediction:
         pdf.ln(5)
         pdf.set_font("Arial", "B", 14)
-        pdf.cell(0, 10, "🔮 AI Prediction", ln=True)
+        pdf.cell(0, 10, " AI Prediction", ln=True)
         pdf.set_font("Arial", "", 12)
 
         pdf.cell(0, 10,
