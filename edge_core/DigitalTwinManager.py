@@ -1,4 +1,6 @@
 class DigitalTwinManager:
+    """Manages the digital twin for each patient."""
+
     def __init__(self, predictor, data_manager):
         self.predictor = predictor
         self.data_manager = data_manager
@@ -16,11 +18,14 @@ class DigitalTwinManager:
         return self.twins.get(patient_id, {})
 
     def get_all_twins_summary(self):
-        """Summary for all patients."""
+        """Return summary for all patients."""
         total_patients = len(self.twins)
         high_risk = [
             pid for pid, twin in self.twins.items()
-            if any(pred.get("risk") == "high" for pred in twin.get("predictions", []))
+            if any(
+                isinstance(pred, dict) and pred.get("risk") == "high"
+                for pred in twin.get("predictions", [])
+            )
         ]
         return {
             "total_patients": total_patients,
