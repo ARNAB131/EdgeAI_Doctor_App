@@ -1,6 +1,4 @@
 class AlertManager:
-    """Handles alerts for abnormal vitals."""
-
     def __init__(self, config, data_manager):
         self.config = config
         self.data_manager = data_manager
