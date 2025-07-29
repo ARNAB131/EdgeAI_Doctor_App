@@ -4,7 +4,8 @@ import pandas as pd
 import asyncio
 from datetime import datetime
 import plotly.graph_objs as go
-from edge_core import ProductionConfig, DataManager, ProductionVitalsPredictor, DigitalTwinManager, AlertManager
+from edge_core import ProductionConfig
+from edge_core import DataManager, ProductionVitalsPredictor, DigitalTwinManager, AlertManager
 from edge_core import SimulatedECGSensor, SimulatedPulseOximeter, SimulatedBloodPressureMonitor
 from utils.auth import login
 from utils.pdf_report import generate_pdf
