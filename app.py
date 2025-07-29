@@ -158,34 +158,36 @@ if st.button("📈 Read Selected Sensors"):
         st.error(f"{alert['title']}\n\n{alert['message']}")
 
 # --------------------------
-# LIVE MULTI-SENSOR GRAPH
+# LIVE ICU-STYLE MONITOR (Color-Coded)
 # --------------------------
 import time
 
-st.subheader("📡 Live Vitals Monitoring")
+st.subheader("📡 ICU-Style Live Vitals Monitor")
 auto_refresh = st.checkbox("Enable Auto Mode", value=True)
-refresh_rate = st.slider("Refresh Interval (seconds)", 1, 10, 3)
+refresh_rate = st.slider("Refresh Interval (seconds)", 1, 5, 2)
+window_seconds = st.slider("Display Window (seconds)", 5, 20, 10)
 
 if auto_refresh:
     graph_placeholder = st.empty()
 
-    for _ in range(200):  # Limit refresh cycles for safety
+    color_map = {
+        "ECG": "green",
+        "SpO2": "blue",
+        "BP_SYS": "red",
+        "BP_DIA": "orange"
+    }
+
+    for _ in range(200):  # Safety limit
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
         vitals = []
 
-        # Read ECG
+        # Read sensors
         if use_ecg:
-            ecg = loop.run_until_complete(ecg_sensor.read_data())
-            vitals.append(ecg)
-
-        # Read SpO2
+            vitals.append(loop.run_until_complete(ecg_sensor.read_data()))
         if use_spo2:
-            spo2 = loop.run_until_complete(spo2_sensor.read_data())
-            vitals.append(spo2)
-
-        # Read BP
+            vitals.append(loop.run_until_complete(spo2_sensor.read_data()))
         if use_bp:
             bp_readings = loop.run_until_complete(bp_sensor.read_data())
             vitals.extend(bp_readings if isinstance(bp_readings, list) else [bp_readings])
@@ -194,40 +196,47 @@ if auto_refresh:
         for v in vitals:
             data_manager.store_vital_sign(v)
 
-        # Get full history for plotting
-        all_history = data_manager.get_patient_vitals_history(patient_id, limit=50)
+        # Get recent history
+        all_history = data_manager.get_patient_vitals_history(patient_id, limit=200)
         df = pd.DataFrame(all_history)
-
-        # Ensure timestamps are datetime
         df["timestamp"] = pd.to_datetime(df.get("timestamp", datetime.now()), errors="coerce")
 
-        # Build Plotly figure
-        fig = go.Figure()
+        # Filter window
+        time_cutoff = datetime.now() - pd.Timedelta(seconds=window_seconds)
+        df = df[df["timestamp"] >= time_cutoff]
 
+        # Build figure
+        fig = go.Figure()
         for sensor in ["ECG", "SpO2", "BP_SYS", "BP_DIA"]:
             sensor_data = df[df["sensor"] == sensor]
             if not sensor_data.empty:
                 fig.add_trace(go.Scatter(
                     x=sensor_data["timestamp"],
                     y=pd.to_numeric(sensor_data["value"], errors="coerce"),
-                    mode="lines+markers",
-                    name=sensor
+                    mode="lines",
+                    name=sensor,
+                    line=dict(color=color_map.get(sensor, "white"), width=2)
                 ))
 
         fig.update_layout(
-            title="📈 Live Multi-Sensor Monitor",
+            title="📈 ICU-Style Live Monitor",
             xaxis_title="Time",
             yaxis_title="Value",
             xaxis=dict(
+                range=[datetime.now() - pd.Timedelta(seconds=window_seconds), datetime.now()],
                 tickformat="%H:%M:%S",
                 tickangle=-45
             ),
-            legend=dict(orientation="h", y=-0.2)
+            legend=dict(orientation="h", y=-0.2),
+            margin=dict(l=20, r=20, t=40, b=40),
+            plot_bgcolor="black",
+            paper_bgcolor="black",
+            font=dict(color="white")
         )
 
         graph_placeholder.plotly_chart(fig, use_container_width=True)
-
         time.sleep(refresh_rate)
+
 
 
     # Download reports
