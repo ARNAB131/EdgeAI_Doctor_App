@@ -7,28 +7,34 @@ class DataManager:
 
     def __init__(self, config):
         self.data_path = config.data_path
+        self.vitals_history = {}  # In-memory cache
 
-        # Backfill vitals.csv to ensure sensor column exists
-if os.path.exists(self.data_path):
-    df = pd.read_csv(self.data_path)
+        # Define consistent ML model input features
+        self.feature_columns = ["heart_rate", "bp_systolic", "bp_diastolic", "oxygen_saturation", "temperature"]
 
-    if "sensor" not in df.columns:
-        df["sensor"] = None
-        
-        # Auto-assign sensor type based on available feature values
-        for i, row in df.iterrows():
-            if pd.notnull(row.get("heart_rate")):
-                df.at[i, "sensor"] = "ECG"
-            elif pd.notnull(row.get("bp_systolic")):
-                df.at[i, "sensor"] = "BP_SYS"
-            elif pd.notnull(row.get("bp_diastolic")):
-                df.at[i, "sensor"] = "BP_DIA"
-            elif pd.notnull(row.get("oxygen_saturation")):
-                df.at[i, "sensor"] = "SpO2"
-            elif pd.notnull(row.get("temperature")):
-                df.at[i, "sensor"] = "Temp"
+        # ----------------------------
+        # Backfill vitals.csv for sensor column
+        # ----------------------------
+        if os.path.exists(self.data_path):
+            df = pd.read_csv(self.data_path)
 
-        df.to_csv(self.data_path, index=False)
+            if "sensor" not in df.columns:
+                df["sensor"] = None
+
+                for i, row in df.iterrows():
+                    if pd.notnull(row.get("heart_rate")):
+                        df.at[i, "sensor"] = "ECG"
+                    elif pd.notnull(row.get("bp_systolic")):
+                        df.at[i, "sensor"] = "BP_SYS"
+                    elif pd.notnull(row.get("bp_diastolic")):
+                        df.at[i, "sensor"] = "BP_DIA"
+                    elif pd.notnull(row.get("oxygen_saturation")):
+                        df.at[i, "sensor"] = "SpO2"
+                    elif pd.notnull(row.get("temperature")):
+                        df.at[i, "sensor"] = "Temp"
+
+                df.to_csv(self.data_path, index=False)
+
 
         self.vitals_history = {}  # In-memory cache
 
