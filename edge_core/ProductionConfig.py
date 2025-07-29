@@ -1,16 +1,12 @@
-class ProductionConfig:
-    """Safe configuration for Edge AI Doctor App."""
+import os
 
-    def __init__(self, model_path="models/model.pkl", data_path="data/vitals.csv", update_interval=10):
-        """
-        Initialize the configuration with safe default values.
-        
-        :param model_path: Path to the model file.
-        :param data_path: Path to the vitals data CSV.
-        :param update_interval: Time interval for updates (in seconds).
-        """
-        self.model_path = model_path
-        self.data_path = data_path
+class ProductionConfig:
+    def __init__(self, model_path=None, data_path="data/vitals.csv", update_interval=10):
+        base_dir = os.path.dirname(os.path.abspath(__file__))  # edge_core folder
+        project_root = os.path.dirname(base_dir)  # go up to project root
+
+        self.model_path = model_path or os.path.join(project_root, "models", "model.pkl")
+        self.data_path = os.path.join(project_root, data_path)
         self.update_interval = update_interval
 
     def get_config(self):
