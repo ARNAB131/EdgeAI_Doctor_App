@@ -1,17 +1,14 @@
 import pickle
 import pandas as pd
 
-class ProductionConfig:
-    """Safe configuration for Edge AI Doctor App."""
+class ProductionVitalsPredictor:
+    """Predicts patient vitals"""
 
-    def __init__(self, model_path="models/model.pkl", data_path="data/vitals.csv", update_interval=10):
-        self.model_path = model_path
-        self.data_path = data_path
-        self.update_interval = update_interval
+    def __init__(self, model_path):
+        with open(model_path, "rb") as f:
+            self.model = pickle.load(f)
 
-    def get_config(self):
-        return {
-            "model_path": self.model_path,
-            "data_path": self.data_path,
-            "update_interval": self.update_interval
-        }
+    def predict(self, features: pd.DataFrame):
+        return self.model.predict(features)
+
+
