@@ -197,6 +197,69 @@ if st.button("📈 Read Selected Sensors"):
     df_all = pd.DataFrame(vitals)
     st.download_button("📥 Download CSV", df_all.to_csv(index=False), "vitals.csv", "text/csv")
 
+import time
+
+st.subheader("📡 Live Vitals Monitoring")
+auto_refresh = st.checkbox("Enable Auto Mode", value=True)
+refresh_rate = st.slider("Refresh Interval (seconds)", 1, 10, 3)
+
+if auto_refresh:
+    graph_placeholder = st.empty()
+    
+    for _ in range(200):  # Limit refresh cycles for safety
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        vitals = []
+        
+        # Read ECG
+        if use_ecg:
+            ecg = loop.run_until_complete(ecg_sensor.read_data())
+            vitals.append(ecg)
+        
+        # Read SpO2
+        if use_spo2:
+            spo2 = loop.run_until_complete(spo2_sensor.read_data())
+            vitals.append(spo2)
+        
+        # Read BP
+        if use_bp:
+            bp_readings = loop.run_until_complete(bp_sensor.read_data())
+            vitals.extend(bp_readings if isinstance(bp_readings, list) else [bp_readings])
+        
+        # Store vitals
+        for v in vitals:
+            data_manager.store_vital_sign(v)
+        
+        # Update twin + prediction
+        all_history = data_manager.get_patient_vitals_history(patient_id, limit=30)
+        prediction = predictor.predict_trend(patient_id, all_history)
+        predictions = [prediction] if prediction else []
+        twin_manager.update_twin(patient_id, vitals, predictions)
+        
+        with graph_placeholder.container():
+            st.subheader("📈 Real-Time Vitals Chart")
+            all_sensors = list({v['sensor_type'] for v in vitals})
+            
+            for sensor in all_sensors:
+                history = data_manager.get_patient_vitals_history(patient_id, sensor, limit=30)
+                if history:
+                    df = pd.DataFrame(history)
+                    df["timestamp"] = pd.to_datetime(df.get("timestamp", datetime.now()), errors="coerce")
+                    value_col = "value" if "value" in df.columns else df.select_dtypes(include="number").columns[0]
+                    
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=df["timestamp"],
+                        y=pd.to_numeric(df[value_col], errors="coerce"),
+                        mode="lines+markers",
+                        name=sensor
+                    ))
+                    fig.update_layout(title=f"{sensor} - Live", xaxis_title="Time", yaxis_title="Value")
+                    st.plotly_chart(fig, use_container_width=True)
+        
+        time.sleep(refresh_rate)
+
 # --------------------------
 # SIDEBAR SUMMARY
 # --------------------------
