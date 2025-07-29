@@ -16,7 +16,7 @@ def generate_pdf(vitals, prediction):
     # Vitals section
     pdf.ln(10)
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "📊 Vitals Data", ln=True)
+    pdf.cell(0, 10, " Vitals Data", ln=True)
     pdf.set_font("Arial", "", 12)
 
     for v in vitals:
