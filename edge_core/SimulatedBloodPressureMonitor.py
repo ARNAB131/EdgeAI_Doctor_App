@@ -1,10 +1,22 @@
 import random
+import asyncio
+from datetime import datetime
 
 class SimulatedBloodPressureMonitor:
-    """Simulates a blood pressure monitor reading systolic and diastolic BP."""
-    
-    def read(self):
+    """Simulates Blood Pressure readings"""
+    def __init__(self, patient_id, device_id):
+        self.patient_id = patient_id
+        self.device_id = device_id
+        self.sensor_type = "BP"
+
+    async def read_data(self):
+        await asyncio.sleep(0.5)
         return {
-            "bp_systolic": random.randint(110, 130),
-            "bp_diastolic": random.randint(70, 85)
+            "patient_id": self.patient_id,
+            "device_id": self.device_id,
+            "sensor_type": self.sensor_type,
+            "value": f"{random.randint(90, 120)}/{random.randint(60, 80)}",
+            "unit": "mmHg",
+            "timestamp": datetime.now(),
+            "quality_score": random.uniform(0.9, 1.0)
         }
