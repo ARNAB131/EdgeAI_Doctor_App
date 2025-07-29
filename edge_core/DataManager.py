@@ -12,7 +12,10 @@ class DataManager:
     def load_data(self):
         """Load CSV data from file."""
         if os.path.exists(self.data_path):
-            return pd.read_csv(self.data_path)
+            try:
+                return pd.read_csv(self.data_path)
+            except Exception:
+                return pd.DataFrame()
         return pd.DataFrame()
 
     def save_data(self, df):
@@ -22,7 +25,15 @@ class DataManager:
 
     def store_vital_sign(self, vital):
         """Store a single vital in memory + append to CSV."""
-        pid = vital.patient_id
+        # Support both object and dict input
+        pid = getattr(vital, "patient_id", vital.get("patient_id"))
+        timestamp = getattr(vital, "timestamp", vital.get("timestamp", datetime.now()))
+        sensor_type = getattr(vital, "sensor_type", vital.get("sensor_type"))
+        value = getattr(vital, "value", vital.get("value"))
+        unit = getattr(vital, "unit", vital.get("unit"))
+        quality_score = getattr(vital, "quality_score", vital.get("quality_score", 1.0))
+
+        # Store in in-memory cache
         if pid not in self.vitals_history:
             self.vitals_history[pid] = []
         self.vitals_history[pid].append(vital)
@@ -30,12 +41,12 @@ class DataManager:
         # Append to CSV
         df = self.load_data()
         df_new = pd.DataFrame([{
-            "patient_id": vital.patient_id,
-            "timestamp": vital.timestamp if hasattr(vital, "timestamp") else datetime.now(),
-            "sensor": vital.sensor_type,
-            "value": vital.value,
-            "unit": vital.unit,
-            "quality_score": vital.quality_score
+            "patient_id": pid,
+            "timestamp": timestamp,
+            "sensor": sensor_type,
+            "value": value,
+            "unit": unit,
+            "quality_score": quality_score
         }])
         df = pd.concat([df, df_new], ignore_index=True)
         self.save_data(df)
@@ -50,4 +61,5 @@ class DataManager:
 
     def store_prediction(self, prediction):
         """Optionally store predictions (extend later)."""
+        # Future: Save prediction data alongside vitals
         pass
