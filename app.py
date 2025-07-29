@@ -132,7 +132,7 @@ if st.button("📈 Read Selected Sensors"):
     # --------------------------
     if alert:
         st.subheader("🚨 Alert")
-        st.error(f"{alert.title}\n\n{alert.message}")
+        st.error(f"{alert['title']}\n\n{alert['message']}")
 
     # --------------------------
     # PLOTLY CHARTS
@@ -143,11 +143,15 @@ if st.button("📈 Read Selected Sensors"):
         history = data_manager.get_patient_vitals_history(patient_id, sensor, limit=30)
         if history:
             df = pd.DataFrame(history)
+
+            # Ensure timestamp format
+            df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+
             fig = go.Figure()
             fig.add_trace(go.Scatter(
-                x=df["timestamp"], 
-                y=df["value"], 
-                mode="lines+markers", 
+                x=df["timestamp"],
+                y=pd.to_numeric(df["value"], errors="coerce"),
+                mode="lines+markers",
                 name=sensor
             ))
             fig.update_layout(title=sensor, xaxis_title="Time", yaxis_title="Value")
