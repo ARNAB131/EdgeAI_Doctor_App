@@ -118,7 +118,7 @@ if st.button("📈 Read Selected Sensors"):
     st.success("✅ Simulation, Prediction & Alert done.")
 
 # --------------------------
-# LIVE MULTI-SENSOR GRAPH (Self-contained)
+# LIVE MULTI-SENSOR GRAPH (Robust)
 # --------------------------
 
 st.subheader("📡 Live Vitals Monitoring")
@@ -133,23 +133,21 @@ if auto_refresh:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        # Collect new vitals fresh in every loop
+        # Collect vitals each loop
         vitals = []
         if use_ecg:
-            ecg = loop.run_until_complete(ecg_sensor.read_data())
-            vitals.append(ecg)
+            vitals.append(loop.run_until_complete(ecg_sensor.read_data()))
         if use_spo2:
-            spo2 = loop.run_until_complete(spo2_sensor.read_data())
-            vitals.append(spo2)
+            vitals.append(loop.run_until_complete(spo2_sensor.read_data()))
         if use_bp:
             bp_readings = loop.run_until_complete(bp_sensor.read_data())
             vitals.extend(bp_readings if isinstance(bp_readings, list) else [bp_readings])
 
-        # Store vitals each iteration
+        # Store vitals
         for v in vitals:
             data_manager.store_vital_sign(v)
 
-        # Retrieve full history
+        # Get history
         all_history = data_manager.get_patient_vitals_history(patient_id, limit=500)
         df = pd.DataFrame(all_history)
 
@@ -157,9 +155,20 @@ if auto_refresh:
             df["timestamp"] = pd.to_datetime(df.get("timestamp", datetime.now()), errors="coerce")
             df = df.sort_values("timestamp").tail(window_size)
 
+            # 🔹 Handle sensor column dynamically
+            sensor_col = None
+            for col in ["sensor", "sensor_type", "Sensor", "SensorType"]:
+                if col in df.columns:
+                    sensor_col = col
+                    break
+
+            if not sensor_col:
+                graph_placeholder.warning("⚠ No sensor column found in data.")
+                continue
+
             fig = go.Figure()
             for sensor in ["ECG", "SpO2", "BP_SYS", "BP_DIA"]:
-                sensor_data = df[df["sensor"] == sensor]
+                sensor_data = df[df[sensor_col] == sensor]
                 if not sensor_data.empty:
                     fig.add_trace(go.Scatter(
                         x=sensor_data["timestamp"],
@@ -172,19 +181,15 @@ if auto_refresh:
                 title="📈 Live ICU Monitor View",
                 xaxis_title="Time",
                 yaxis_title="Value",
-                xaxis=dict(
-                    tickformat="%H:%M:%S",
-                    range=[df["timestamp"].min(), df["timestamp"].max()]
-                ),
+                xaxis=dict(tickformat="%H:%M:%S", tickangle=-45),
                 legend=dict(orientation="h", y=-0.2)
             )
 
             graph_placeholder.plotly_chart(fig, use_container_width=True)
         else:
-            graph_placeholder.info("No vitals data available yet.")
+            graph_placeholder.info("No vitals data yet.")
 
         time.sleep(refresh_rate)
-
 
 # --------------------------
 # SIDEBAR SUMMARY
