@@ -118,21 +118,44 @@ if st.button("📈 Read Selected Sensors"):
     st.success("✅ Simulation, Prediction & Alert done.")
 
 # --------------------------
-# LIVE MULTI-SENSOR GRAPH
+# LIVE MULTI-SENSOR GRAPH (Self-contained)
 # --------------------------
+
 st.subheader("📡 Live Vitals Monitoring")
 auto_refresh = st.checkbox("Enable Auto Mode", value=True)
 refresh_rate = st.slider("Refresh Interval (seconds)", 1, 10, 3)
+window_size = st.slider("Visible Data Points", 20, 100, 50)  # how many points to show
 
 if auto_refresh:
     graph_placeholder = st.empty()
 
-    for _ in range(200):
-        all_history = data_manager.get_patient_vitals_history(patient_id, limit=50)
+    for _ in range(500):  # limit loop for safety
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        # Collect new vitals fresh in every loop
+        vitals = []
+        if use_ecg:
+            ecg = loop.run_until_complete(ecg_sensor.read_data())
+            vitals.append(ecg)
+        if use_spo2:
+            spo2 = loop.run_until_complete(spo2_sensor.read_data())
+            vitals.append(spo2)
+        if use_bp:
+            bp_readings = loop.run_until_complete(bp_sensor.read_data())
+            vitals.extend(bp_readings if isinstance(bp_readings, list) else [bp_readings])
+
+        # Store vitals each iteration
+        for v in vitals:
+            data_manager.store_vital_sign(v)
+
+        # Retrieve full history
+        all_history = data_manager.get_patient_vitals_history(patient_id, limit=500)
         df = pd.DataFrame(all_history)
 
         if not df.empty:
             df["timestamp"] = pd.to_datetime(df.get("timestamp", datetime.now()), errors="coerce")
+            df = df.sort_values("timestamp").tail(window_size)
 
             fig = go.Figure()
             for sensor in ["ECG", "SpO2", "BP_SYS", "BP_DIA"]:
@@ -140,23 +163,28 @@ if auto_refresh:
                 if not sensor_data.empty:
                     fig.add_trace(go.Scatter(
                         x=sensor_data["timestamp"],
-                        y=pd.to_numeric(sensor_data.get("value", sensor_data.select_dtypes(include="number").iloc[:, 0]), errors="coerce"),
-                        mode="lines+markers",
+                        y=pd.to_numeric(sensor_data["value"], errors="coerce"),
+                        mode="lines",
                         name=sensor
                     ))
 
             fig.update_layout(
-                title="📈 Live Multi-Sensor Monitor",
+                title="📈 Live ICU Monitor View",
                 xaxis_title="Time",
                 yaxis_title="Value",
-                xaxis=dict(tickformat="%H:%M:%S"),
+                xaxis=dict(
+                    tickformat="%H:%M:%S",
+                    range=[df["timestamp"].min(), df["timestamp"].max()]
+                ),
                 legend=dict(orientation="h", y=-0.2)
             )
+
             graph_placeholder.plotly_chart(fig, use_container_width=True)
         else:
             graph_placeholder.info("No vitals data available yet.")
 
         time.sleep(refresh_rate)
+
 
 # --------------------------
 # SIDEBAR SUMMARY
