@@ -3,17 +3,10 @@ import pickle
 import pandas as pd
 
 class ProductionVitalsPredictor:
-    """Predicts patient vitals trends"""
-
     def __init__(self, config):
         model_path = config.model_path
-
-        if not os.path.isabs(model_path):
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            model_path = os.path.join(base_dir, model_path)
-
         if not os.path.exists(model_path):
-            print(f"⚠️ Model file not found at {model_path}. Using fallback.")
+            print("⚠️ Model file missing, using dummy model")
             self.model = None
         else:
             with open(model_path, "rb") as f:
