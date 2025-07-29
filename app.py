@@ -168,28 +168,41 @@ if st.button("📈 Read Selected Sensors"):
         st.subheader("🚨 Alert")
         st.error(f"{alert['title']}\n\n{alert['message']}")
 
-    # --------------------------
-    # PLOTLY CHARTS
-    # --------------------------
-    st.subheader("📈 Vitals Chart")
-    all_sensors = list({v['sensor_type'] for v in vitals})
-    for sensor in all_sensors:
-        history = data_manager.get_patient_vitals_history(patient_id, sensor, limit=30)
-        if history:
-            df = pd.DataFrame(history)
+  # --------------------------
+# PLOTLY CHARTS
+# --------------------------
+st.subheader("📈 Vitals Chart")
+all_sensors = list({v['sensor_type'] for v in vitals})
+for sensor in all_sensors:
+    history = data_manager.get_patient_vitals_history(patient_id, sensor, limit=30)
+    if history:
+        df = pd.DataFrame(history)
 
-            # Ensure timestamp format
-            df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        # Ensure timestamp format
+        df["timestamp"] = pd.to_datetime(df.get("timestamp", datetime.now()), errors="coerce")
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=df["timestamp"],
-                y=pd.to_numeric(df["value"], errors="coerce"),
-                mode="lines+markers",
-                name=sensor
-            ))
-            fig.update_layout(title=sensor, xaxis_title="Time", yaxis_title="Value")
-            st.plotly_chart(fig, use_container_width=True)
+        # Handle value column
+        if "value" not in df.columns:
+            # Try to locate numeric columns dynamically
+            numeric_cols = df.select_dtypes(include="number").columns
+            if len(numeric_cols) > 0:
+                value_col = numeric_cols[0]
+            else:
+                st.warning(f"No numeric values for {sensor}")
+                continue
+        else:
+            value_col = "value"
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df["timestamp"],
+            y=pd.to_numeric(df[value_col], errors="coerce"),
+            mode="lines+markers",
+            name=sensor
+        ))
+        fig.update_layout(title=sensor, xaxis_title="Time", yaxis_title="Value")
+        st.plotly_chart(fig, use_container_width=True)
+
 
     # --------------------------
     # DOWNLOAD REPORTS
