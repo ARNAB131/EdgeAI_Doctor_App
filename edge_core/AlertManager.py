@@ -1,7 +1,9 @@
 class AlertManager:
-    """Handles alerts for abnormal vitals"""
+    """Handles alerts for abnormal vitals."""
 
-    def __init__(self):
+    def __init__(self, config, data_manager):
+        self.config = config
+        self.data_manager = data_manager
         self.thresholds = {
             "heart_rate": (60, 100),
             "bp_systolic": (90, 120),
@@ -9,11 +11,32 @@ class AlertManager:
             "oxygen_saturation": (95, 100),
             "temperature": (36.1, 37.5)
         }
+        self.alerts = {}
 
-    def check_alerts(self, vitals):
+    def generate_alert(self, patient_id, twin, predictions):
         alerts = []
-        for vital, (low, high) in self.thresholds.items():
-            value = vitals.get(vital)
-            if value is not None and (value < low or value > high):
-                alerts.append(f"{vital} out of range: {value}")
-        return alerts
+        vitals = twin.get("vitals", [])
+
+        # Check vitals
+        for vital in vitals:
+            if hasattr(vital, "sensor_type"):
+                sensor = vital.sensor_type.lower()
+                if sensor in self.thresholds:
+                    low, high = self.thresholds[sensor]
+                    if vital.value < low or vital.value > high:
+                        alert_msg = f"{sensor.capitalize()} out of range: {vital.value}"
+                        alerts.append(alert_msg)
+
+        # Store alerts
+        if alerts:
+            self.alerts[patient_id] = alerts
+            return {
+                "title": "🚨 Alert",
+                "message": "\n".join(alerts)
+            }
+        return None
+
+    def get_alert_statistics(self):
+        return {
+            "active_alerts": len(self.alerts)
+        }
