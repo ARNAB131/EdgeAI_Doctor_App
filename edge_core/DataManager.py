@@ -7,6 +7,29 @@ class DataManager:
 
     def __init__(self, config):
         self.data_path = config.data_path
+
+        # Backfill vitals.csv to ensure sensor column exists
+if os.path.exists(self.data_path):
+    df = pd.read_csv(self.data_path)
+
+    if "sensor" not in df.columns:
+        df["sensor"] = None
+        
+        # Auto-assign sensor type based on available feature values
+        for i, row in df.iterrows():
+            if pd.notnull(row.get("heart_rate")):
+                df.at[i, "sensor"] = "ECG"
+            elif pd.notnull(row.get("bp_systolic")):
+                df.at[i, "sensor"] = "BP_SYS"
+            elif pd.notnull(row.get("bp_diastolic")):
+                df.at[i, "sensor"] = "BP_DIA"
+            elif pd.notnull(row.get("oxygen_saturation")):
+                df.at[i, "sensor"] = "SpO2"
+            elif pd.notnull(row.get("temperature")):
+                df.at[i, "sensor"] = "Temp"
+
+        df.to_csv(self.data_path, index=False)
+
         self.vitals_history = {}  # In-memory cache
 
         # Define consistent ML model input features
@@ -26,49 +49,43 @@ class DataManager:
         os.makedirs(os.path.dirname(self.data_path), exist_ok=True)
         df.to_csv(self.data_path, index=False)
 
-    def store_vital_sign(self, vital):
-        """Store vitals in a consistent wide-format for ML prediction."""
-        pid = getattr(vital, "patient_id", vital.get("patient_id"))
-        timestamp = getattr(vital, "timestamp", vital.get("timestamp", datetime.now()))
-        sensor_type = getattr(vital, "sensor_type", vital.get("sensor_type"))
-        value = getattr(vital, "value", vital.get("value"))
+   def store_vital_sign(self, vital):
+    """Store vitals in wide format for ML, and keep sensor info for plotting."""
+    pid = getattr(vital, "patient_id", vital.get("patient_id"))
+    timestamp = getattr(vital, "timestamp", vital.get("timestamp", datetime.now()))
+    sensor_type = getattr(vital, "sensor_type", vital.get("sensor_type"))
+    value = getattr(vital, "value", vital.get("value"))
 
-        # Load existing data
-        df = self.load_data()
+    # Load existing data
+    df = self.load_data()
 
-        # Map sensor types to ML feature columns
-        mapping = {
-            "ECG": "heart_rate",
-            "BP_SYS": "bp_systolic",
-            "BP_DIA": "bp_diastolic",
-            "SpO2": "oxygen_saturation",
-            "Temp": "temperature"
-        }
-        feature_col = mapping.get(sensor_type)
+    # Map sensor types to ML feature columns
+    mapping = {
+        "ECG": "heart_rate",
+        "BP_SYS": "bp_systolic",
+        "BP_DIA": "bp_diastolic",
+        "SpO2": "oxygen_saturation",
+        "Temp": "temperature"
+    }
+    feature_col = mapping.get(sensor_type)
 
-        if not feature_col:
-            return  # Skip if unknown sensor type
+    # Add sensor column for visualization
+    if "sensor" not in df.columns:
+        df["sensor"] = None
 
-        # Update or create patient record
+    if feature_col:
+        # Update or create patient record (wide-format for ML)
         if pid in df["patient_id"].values:
             idx = df[df["patient_id"] == pid].index[-1]
             df.at[idx, feature_col] = value
             df.at[idx, "timestamp"] = timestamp
+            df.at[idx, "sensor"] = sensor_type
         else:
             new_row = {col: None for col in self.feature_columns}
             new_row["patient_id"] = pid
             new_row["timestamp"] = timestamp
+            new_row["sensor"] = sensor_type
             new_row[feature_col] = value
             df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
-        self.save_data(df)
-
-    def get_patient_vitals_history(self, patient_id, sensor_type=None, limit=30):
-        """Retrieve last N vital readings for a patient."""
-        df = self.load_data()
-        patient_data = df[df["patient_id"] == patient_id]
-        return patient_data.tail(limit).to_dict("records")
-
-    def store_prediction(self, prediction):
-        """Store predictions if needed in future."""
-        pass
+    self.save_data(df)
