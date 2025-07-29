@@ -58,32 +58,31 @@ use_bp = st.sidebar.checkbox("BP", True)
 st.sidebar.subheader("📤 Upload Vitals CSV")
 uploaded = st.sidebar.file_uploader("Upload CSV", type=["csv"])
 if uploaded:
-    df_uploaded = pd.read_csv(uploaded)
-    st.subheader("📄 Uploaded Data")
-    st.dataframe(df_uploaded)
-
-    # Prepare CSV for prediction
     try:
+        df_uploaded = pd.read_csv(uploaded)
+        st.subheader("📄 Uploaded Data")
+        st.dataframe(df_uploaded)
+
+        # Prepare CSV for prediction
         df_for_pred = df_uploaded.copy()
 
-        # Drop non-feature columns like timestamp, patient_id, etc.
-        cols_to_keep = predictor.required_features
-        df_for_pred = df_for_pred[[col for col in cols_to_keep if col in df_for_pred.columns]]
+        # Keep only feature columns
+        cols_to_keep = [col for col in predictor.required_features if col in df_for_pred.columns]
+        df_for_pred = df_for_pred[cols_to_keep]
 
-        # Ensure all required features exist
+        # Fill missing required features with defaults
         for col in predictor.required_features:
             if col not in df_for_pred.columns:
-                df_for_pred[col] = 0  # Fill missing column with default
+                df_for_pred[col] = 0
 
-        # Convert all to numeric
+        # Ensure numeric format
         df_for_pred = df_for_pred.apply(pd.to_numeric, errors="coerce").fillna(0)
 
         # Predict
         csv_predictions = predictor.predict(df_for_pred)
-
-        # Append predictions to uploaded dataframe
         df_uploaded["Prediction"] = csv_predictions
 
+        # Show predictions
         st.subheader("🔮 Predictions from Uploaded Data")
         st.dataframe(df_uploaded)
 
@@ -124,89 +123,73 @@ if st.button("📈 Read Selected Sensors"):
         else:
             vitals.append(bp_readings)
 
-    # --------------------------
-    # STORE VITALS
-    # --------------------------
+    # Store vitals
     for v in vitals:
         data_manager.store_vital_sign(v)
 
     all_history = data_manager.get_patient_vitals_history(patient_id, limit=30)
 
-    # --------------------------
-    # PREDICTION
-    # --------------------------
+    # Prediction
     prediction = predictor.predict_trend(patient_id, all_history)
     if prediction:
         data_manager.store_prediction(prediction)
     predictions = [prediction] if prediction else []
 
-    # Update twin + alerts
+    # Update twin & alerts
     twin_manager.update_twin(patient_id, vitals, predictions)
     twin = twin_manager.get_twin(patient_id)
     alert = alert_manager.generate_alert(patient_id, twin, predictions)
 
     st.success("✅ Simulation, Prediction & Alert done.")
 
-    # --------------------------
-    # DISPLAY CURRENT VITALS
-    # --------------------------
+    # Display vitals
     st.subheader("📊 Current Vitals")
     for v in vitals:
         st.markdown(f"**{v['sensor_type']}**: `{v['value']}` {v['unit']} | Quality: `{v['quality_score']:.2f}`")
 
-    # --------------------------
-    # DISPLAY PREDICTIONS
-    # --------------------------
+    # Display prediction
     if prediction:
         st.subheader("🔮 Prediction")
         st.markdown(f"**{prediction['prediction_type']}** → `{prediction['predicted_value']:.2f}` (Confidence: `{prediction['confidence']:.2f}`)")
 
-    # --------------------------
-    # DISPLAY ALERTS
-    # --------------------------
+    # Display alerts
     if alert:
         st.subheader("🚨 Alert")
         st.error(f"{alert['title']}\n\n{alert['message']}")
 
-  # --------------------------
-# PLOTLY CHARTS
-# --------------------------
-st.subheader("📈 Vitals Chart")
-all_sensors = list({v['sensor_type'] for v in vitals})
-for sensor in all_sensors:
-    history = data_manager.get_patient_vitals_history(patient_id, sensor, limit=30)
-    if history:
-        df = pd.DataFrame(history)
+    # --------------------------
+    # PLOTLY CHARTS (Robust against missing/extra columns)
+    # --------------------------
+    st.subheader("📈 Vitals Chart")
+    all_sensors = list({v['sensor_type'] for v in vitals})
+    for sensor in all_sensors:
+        history = data_manager.get_patient_vitals_history(patient_id, sensor, limit=30)
+        if history:
+            df = pd.DataFrame(history)
+            df["timestamp"] = pd.to_datetime(df.get("timestamp", datetime.now()), errors="coerce")
 
-        # Ensure timestamp format
-        df["timestamp"] = pd.to_datetime(df.get("timestamp", datetime.now()), errors="coerce")
-
-        # Handle value column
-        if "value" not in df.columns:
-            # Try to locate numeric columns dynamically
-            numeric_cols = df.select_dtypes(include="number").columns
-            if len(numeric_cols) > 0:
-                value_col = numeric_cols[0]
+            # Determine value column
+            if "value" in df.columns:
+                value_col = "value"
             else:
-                st.warning(f"No numeric values for {sensor}")
-                continue
-        else:
-            value_col = "value"
+                numeric_cols = df.select_dtypes(include="number").columns
+                if numeric_cols.any():
+                    value_col = numeric_cols[0]
+                else:
+                    st.warning(f"No numeric values for {sensor}")
+                    continue
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df["timestamp"],
-            y=pd.to_numeric(df[value_col], errors="coerce"),
-            mode="lines+markers",
-            name=sensor
-        ))
-        fig.update_layout(title=sensor, xaxis_title="Time", yaxis_title="Value")
-        st.plotly_chart(fig, use_container_width=True)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df["timestamp"],
+                y=pd.to_numeric(df[value_col], errors="coerce"),
+                mode="lines+markers",
+                name=sensor
+            ))
+            fig.update_layout(title=sensor, xaxis_title="Time", yaxis_title="Value")
+            st.plotly_chart(fig, use_container_width=True)
 
-
-    # --------------------------
-    # DOWNLOAD REPORTS
-    # --------------------------
+    # Download reports
     pdf_path = generate_pdf(vitals, prediction)
     with open(pdf_path, "rb") as f_pdf:
         st.download_button("📥 Download PDF Report", f_pdf, file_name=pdf_path.split("/")[-1])
