@@ -1,6 +1,7 @@
 import os
 import pickle
 import pandas as pd
+import streamlit as st  # For debug logging in Cloud
 
 class ProductionVitalsPredictor:
     """Predicts patient vitals trends"""
@@ -13,38 +14,47 @@ class ProductionVitalsPredictor:
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             model_path = os.path.join(base_dir, model_path)
 
-        # Safe model loading
+        # Load model safely
         self.model = None
-        self.feature_names = []  # store expected features
+        self.feature_names = []
 
         if not os.path.exists(model_path):
-            print(f"⚠️ Model file not found at {model_path}. Using fallback model.")
+            st.warning(f"⚠️ Model file not found at {model_path}. Using fallback model.")
         else:
             with open(model_path, "rb") as f:
                 self.model = pickle.load(f)
                 if hasattr(self.model, "feature_names_in_"):
                     self.feature_names = list(self.model.feature_names_in_)
                 else:
-                    # Default expected vitals
+                    # Define fallback
                     self.feature_names = ["heart_rate", "bp_systolic", "bp_diastolic", "oxygen_saturation", "temperature"]
 
     def _prepare_features(self, df: pd.DataFrame):
-        """Ensure dataframe matches expected model features."""
+        """Ensure DataFrame matches exactly model expected features."""
+        safe_df = pd.DataFrame(columns=self.feature_names)
+
         for col in self.feature_names:
-            if col not in df.columns:
-                df[col] = 0  # fill missing
-        return df[self.feature_names]
+            safe_df[col] = df[col] if col in df.columns else 0
+
+        safe_df = safe_df[self.feature_names]
+
+        # Debug: Show aligned columns in Streamlit logs
+        st.write("📊 Model Input Columns:", list(safe_df.columns))
+        st.write("📈 Model Input Values:", safe_df.tail(1).to_dict(orient="records"))
+
+        return safe_df
 
     def predict(self, features: pd.DataFrame):
+        """Predict from features aligned with model."""
         if self.model is None:
-            print("⚠️ No model loaded. Returning dummy prediction.")
+            st.warning("⚠️ No model loaded. Returning dummy prediction.")
             return [0] * len(features)
 
         safe_features = self._prepare_features(features)
         return self.model.predict(safe_features)
 
     def predict_trend(self, patient_id, history):
-        """Predict trend based on patient history."""
+        """Predict trend for patient based on recent history."""
         if not history:
             return None
 
@@ -52,7 +62,7 @@ class ProductionVitalsPredictor:
         numeric_df = df_history.select_dtypes(include="number")
 
         if numeric_df.empty:
-            print(f"⚠️ No numeric data found for patient {patient_id}")
+            st.warning(f"⚠️ No numeric data for patient {patient_id}")
             return None
 
         prediction_value = self.predict(numeric_df.tail(1))
