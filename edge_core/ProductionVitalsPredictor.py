@@ -53,25 +53,53 @@ class ProductionVitalsPredictor:
         safe_features = self._prepare_features(features)
         return self.model.predict(safe_features)
 
-    def predict_trend(self, patient_id, history):
-        """Predict trend for patient based on recent history."""
-        if not history:
-            return None
+def predict_trend(self, patient_id, history):
+    """Predict trend for patient based on recent history."""
+    if not history:
+        return None
 
-        df_history = pd.DataFrame(history)
-        numeric_df = df_history.select_dtypes(include="number")
+    df_history = pd.DataFrame(history)
 
-        if numeric_df.empty:
-            st.warning(f"⚠️ No numeric data for patient {patient_id}")
-            return None
+    # Convert sensor readings to wide format
+    if "sensor" in df_history.columns:
+        df_pivot = df_history.pivot_table(
+            index="patient_id", 
+            columns="sensor", 
+            values="value", 
+            aggfunc="last"
+        ).reset_index()
+    else:
+        df_pivot = df_history.copy()
 
-        prediction_value = self.predict(numeric_df.tail(1))
-        risk_level = "high" if prediction_value[0] > 100 else "normal"
+    # Rename to match model feature names
+    rename_map = {
+        "ECG": "heart_rate",
+        "BP_SYS": "bp_systolic",
+        "BP_DIA": "bp_diastolic",
+        "SpO2": "oxygen_saturation",
+        "Temp": "temperature"
+    }
+    df_pivot.rename(columns=rename_map, inplace=True)
 
-        return {
-            "patient_id": patient_id,
-            "prediction_type": "trend",
-            "predicted_value": float(prediction_value[0]),
-            "confidence": 0.85,
-            "risk": risk_level
-        }
+    numeric_df = df_pivot.select_dtypes(include="number")
+
+    # If still empty, fallback to zeros
+    if numeric_df.empty:
+        numeric_df = pd.DataFrame([{
+            "heart_rate": 0,
+            "bp_systolic": 0,
+            "bp_diastolic": 0,
+            "oxygen_saturation": 0,
+            "temperature": 0
+        }])
+
+    prediction_value = self.predict(numeric_df)
+    risk_level = "high" if prediction_value[0] > 100 else "normal"
+
+    return {
+        "patient_id": patient_id,
+        "prediction_type": "trend",
+        "predicted_value": float(prediction_value[0]),
+        "confidence": 0.85,
+        "risk": risk_level
+    }
