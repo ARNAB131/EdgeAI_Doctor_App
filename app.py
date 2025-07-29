@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 import asyncio
+import time
 from datetime import datetime
 import plotly.graph_objs as go
 from edge_core import ProductionConfig
@@ -44,6 +45,9 @@ ecg_sensor = SimulatedECGSensor(patient_id, device_id)
 spo2_sensor = SimulatedPulseOximeter(patient_id, device_id)
 bp_sensor = SimulatedBloodPressureMonitor(patient_id, device_id)
 
+# Always define vitals
+vitals = []
+
 # --------------------------
 # SIDEBAR - SENSOR SELECTION
 # --------------------------
@@ -58,31 +62,23 @@ use_bp = st.sidebar.checkbox("BP", True)
 st.sidebar.subheader("📤 Upload Vitals CSV")
 uploaded = st.sidebar.file_uploader("Upload CSV", type=["csv"])
 if uploaded:
+    df_uploaded = pd.read_csv(uploaded)
+    st.subheader("📄 Uploaded Data")
+    st.dataframe(df_uploaded)
+
     try:
-        df_uploaded = pd.read_csv(uploaded)
-        st.subheader("📄 Uploaded Data")
-        st.dataframe(df_uploaded)
-
-        # Prepare CSV for prediction
         df_for_pred = df_uploaded.copy()
+        cols_to_keep = predictor.required_features
+        df_for_pred = df_for_pred[[col for col in cols_to_keep if col in df_for_pred.columns]]
 
-        # Keep only feature columns
-        cols_to_keep = [col for col in predictor.required_features if col in df_for_pred.columns]
-        df_for_pred = df_for_pred[cols_to_keep]
-
-        # Fill missing required features with defaults
         for col in predictor.required_features:
             if col not in df_for_pred.columns:
                 df_for_pred[col] = 0
 
-        # Ensure numeric format
         df_for_pred = df_for_pred.apply(pd.to_numeric, errors="coerce").fillna(0)
-
-        # Predict
         csv_predictions = predictor.predict(df_for_pred)
         df_uploaded["Prediction"] = csv_predictions
 
-        # Show predictions
         st.subheader("🔮 Predictions from Uploaded Data")
         st.dataframe(df_uploaded)
 
@@ -92,7 +88,6 @@ if uploaded:
             file_name="predictions.csv",
             mime="text/csv"
         )
-
     except Exception as e:
         st.error(f"❌ Prediction failed: {e}")
 
@@ -103,211 +98,64 @@ if st.button("📈 Read Selected Sensors"):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    vitals = []
-
-    # ECG
     if use_ecg:
-        ecg = loop.run_until_complete(ecg_sensor.read_data())
-        vitals.append(ecg)
-
-    # SpO2
+        vitals.append(loop.run_until_complete(ecg_sensor.read_data()))
     if use_spo2:
-        spo2 = loop.run_until_complete(spo2_sensor.read_data())
-        vitals.append(spo2)
-
-    # BP
+        vitals.append(loop.run_until_complete(spo2_sensor.read_data()))
     if use_bp:
         bp_readings = loop.run_until_complete(bp_sensor.read_data())
-        if isinstance(bp_readings, list):  # BP_SYS & BP_DIA
-            vitals.extend(bp_readings)
-        else:
-            vitals.append(bp_readings)
+        vitals.extend(bp_readings if isinstance(bp_readings, list) else [bp_readings])
 
-    # Store vitals
     for v in vitals:
         data_manager.store_vital_sign(v)
 
     all_history = data_manager.get_patient_vitals_history(patient_id, limit=30)
-
-    # Prediction
     prediction = predictor.predict_trend(patient_id, all_history)
-    if prediction:
-        data_manager.store_prediction(prediction)
     predictions = [prediction] if prediction else []
-
-    # Update twin & alerts
     twin_manager.update_twin(patient_id, vitals, predictions)
-    twin = twin_manager.get_twin(patient_id)
-    alert = alert_manager.generate_alert(patient_id, twin, predictions)
+    alert = alert_manager.generate_alert(patient_id, twin_manager.get_twin(patient_id), predictions)
 
     st.success("✅ Simulation, Prediction & Alert done.")
 
-    # Display vitals
-    st.subheader("📊 Current Vitals")
-    for v in vitals:
-        st.markdown(f"**{v['sensor_type']}**: `{v['value']}` {v['unit']} | Quality: `{v['quality_score']:.2f}`")
-
-    # Display prediction
-    if prediction:
-        st.subheader("🔮 Prediction")
-        st.markdown(f"**{prediction['prediction_type']}** → `{prediction['predicted_value']:.2f}` (Confidence: `{prediction['confidence']:.2f}`)")
-
-    # Display alerts
-    if alert:
-        st.subheader("🚨 Alert")
-        st.error(f"{alert['title']}\n\n{alert['message']}")
-
 # --------------------------
-# LIVE ICU-STYLE MONITOR (Color-Coded)
+# LIVE MULTI-SENSOR GRAPH
 # --------------------------
-import time
-
-st.subheader("📡 ICU-Style Live Vitals Monitor")
-auto_refresh = st.checkbox("Enable Auto Mode", value=True)
-refresh_rate = st.slider("Refresh Interval (seconds)", 1, 5, 2)
-window_seconds = st.slider("Display Window (seconds)", 5, 20, 10)
-
-if auto_refresh:
-    graph_placeholder = st.empty()
-
-    color_map = {
-        "ECG": "green",
-        "SpO2": "blue",
-        "BP_SYS": "red",
-        "BP_DIA": "orange"
-    }
-
-    for _ in range(200):  # Safety limit
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        vitals = []
-
-        # Read sensors
-        if use_ecg:
-            vitals.append(loop.run_until_complete(ecg_sensor.read_data()))
-        if use_spo2:
-            vitals.append(loop.run_until_complete(spo2_sensor.read_data()))
-        if use_bp:
-            bp_readings = loop.run_until_complete(bp_sensor.read_data())
-            vitals.extend(bp_readings if isinstance(bp_readings, list) else [bp_readings])
-
-        # Store vitals
-        for v in vitals:
-            data_manager.store_vital_sign(v)
-
-        # Get recent history
-        all_history = data_manager.get_patient_vitals_history(patient_id, limit=200)
-        df = pd.DataFrame(all_history)
-        df["timestamp"] = pd.to_datetime(df.get("timestamp", datetime.now()), errors="coerce")
-
-        # Filter window
-        time_cutoff = datetime.now() - pd.Timedelta(seconds=window_seconds)
-        df = df[df["timestamp"] >= time_cutoff]
-
-        # Build figure
-        fig = go.Figure()
-        for sensor in ["ECG", "SpO2", "BP_SYS", "BP_DIA"]:
-            sensor_data = df[df["sensor"] == sensor]
-            if not sensor_data.empty:
-                fig.add_trace(go.Scatter(
-                    x=sensor_data["timestamp"],
-                    y=pd.to_numeric(sensor_data["value"], errors="coerce"),
-                    mode="lines",
-                    name=sensor,
-                    line=dict(color=color_map.get(sensor, "white"), width=2)
-                ))
-
-        fig.update_layout(
-            title="📈 ICU-Style Live Monitor",
-            xaxis_title="Time",
-            yaxis_title="Value",
-            xaxis=dict(
-                range=[datetime.now() - pd.Timedelta(seconds=window_seconds), datetime.now()],
-                tickformat="%H:%M:%S",
-                tickangle=-45
-            ),
-            legend=dict(orientation="h", y=-0.2),
-            margin=dict(l=20, r=20, t=40, b=40),
-            plot_bgcolor="black",
-            paper_bgcolor="black",
-            font=dict(color="white")
-        )
-
-        graph_placeholder.plotly_chart(fig, use_container_width=True)
-        time.sleep(refresh_rate)
-
-
-
-    # Download reports
-    pdf_path = generate_pdf(vitals, prediction)
-    with open(pdf_path, "rb") as f_pdf:
-        st.download_button("📥 Download PDF Report", f_pdf, file_name=pdf_path.split("/")[-1])
-
-    df_all = pd.DataFrame(vitals)
-    st.download_button("📥 Download CSV", df_all.to_csv(index=False), "vitals.csv", "text/csv")
-
-import time
-
 st.subheader("📡 Live Vitals Monitoring")
 auto_refresh = st.checkbox("Enable Auto Mode", value=True)
 refresh_rate = st.slider("Refresh Interval (seconds)", 1, 10, 3)
 
 if auto_refresh:
     graph_placeholder = st.empty()
-    
-    for _ in range(200):  # Limit refresh cycles for safety
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        vitals = []
-        
-        # Read ECG
-        if use_ecg:
-            ecg = loop.run_until_complete(ecg_sensor.read_data())
-            vitals.append(ecg)
-        
-        # Read SpO2
-        if use_spo2:
-            spo2 = loop.run_until_complete(spo2_sensor.read_data())
-            vitals.append(spo2)
-        
-        # Read BP
-        if use_bp:
-            bp_readings = loop.run_until_complete(bp_sensor.read_data())
-            vitals.extend(bp_readings if isinstance(bp_readings, list) else [bp_readings])
-        
-        # Store vitals
-        for v in vitals:
-            data_manager.store_vital_sign(v)
-        
-        # Update twin + prediction
-        all_history = data_manager.get_patient_vitals_history(patient_id, limit=30)
-        prediction = predictor.predict_trend(patient_id, all_history)
-        predictions = [prediction] if prediction else []
-        twin_manager.update_twin(patient_id, vitals, predictions)
-        
-        with graph_placeholder.container():
-            st.subheader("📈 Real-Time Vitals Chart")
-            all_sensors = list({v['sensor_type'] for v in vitals})
-            
-            for sensor in all_sensors:
-                history = data_manager.get_patient_vitals_history(patient_id, sensor, limit=30)
-                if history:
-                    df = pd.DataFrame(history)
-                    df["timestamp"] = pd.to_datetime(df.get("timestamp", datetime.now()), errors="coerce")
-                    value_col = "value" if "value" in df.columns else df.select_dtypes(include="number").columns[0]
-                    
-                    fig = go.Figure()
+
+    for _ in range(200):
+        all_history = data_manager.get_patient_vitals_history(patient_id, limit=50)
+        df = pd.DataFrame(all_history)
+
+        if not df.empty:
+            df["timestamp"] = pd.to_datetime(df.get("timestamp", datetime.now()), errors="coerce")
+
+            fig = go.Figure()
+            for sensor in ["ECG", "SpO2", "BP_SYS", "BP_DIA"]:
+                sensor_data = df[df["sensor"] == sensor]
+                if not sensor_data.empty:
                     fig.add_trace(go.Scatter(
-                        x=df["timestamp"],
-                        y=pd.to_numeric(df[value_col], errors="coerce"),
+                        x=sensor_data["timestamp"],
+                        y=pd.to_numeric(sensor_data.get("value", sensor_data.select_dtypes(include="number").iloc[:, 0]), errors="coerce"),
                         mode="lines+markers",
                         name=sensor
                     ))
-                    fig.update_layout(title=f"{sensor} - Live", xaxis_title="Time", yaxis_title="Value")
-                    st.plotly_chart(fig, use_container_width=True)
-        
+
+            fig.update_layout(
+                title="📈 Live Multi-Sensor Monitor",
+                xaxis_title="Time",
+                yaxis_title="Value",
+                xaxis=dict(tickformat="%H:%M:%S"),
+                legend=dict(orientation="h", y=-0.2)
+            )
+            graph_placeholder.plotly_chart(fig, use_container_width=True)
+        else:
+            graph_placeholder.info("No vitals data available yet.")
+
         time.sleep(refresh_rate)
 
 # --------------------------
