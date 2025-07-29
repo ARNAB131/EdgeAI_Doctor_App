@@ -157,37 +157,78 @@ if st.button("📈 Read Selected Sensors"):
         st.subheader("🚨 Alert")
         st.error(f"{alert['title']}\n\n{alert['message']}")
 
-    # --------------------------
-    # PLOTLY CHARTS (Robust against missing/extra columns)
-    # --------------------------
-    st.subheader("📈 Vitals Chart")
-    all_sensors = list({v['sensor_type'] for v in vitals})
-    for sensor in all_sensors:
-        history = data_manager.get_patient_vitals_history(patient_id, sensor, limit=30)
-        if history:
-            df = pd.DataFrame(history)
-            df["timestamp"] = pd.to_datetime(df.get("timestamp", datetime.now()), errors="coerce")
+# --------------------------
+# LIVE MULTI-SENSOR GRAPH
+# --------------------------
+import time
 
-            # Determine value column
-            if "value" in df.columns:
-                value_col = "value"
-            else:
-                numeric_cols = df.select_dtypes(include="number").columns
-                if numeric_cols.any():
-                    value_col = numeric_cols[0]
-                else:
-                    st.warning(f"No numeric values for {sensor}")
-                    continue
+st.subheader("📡 Live Vitals Monitoring")
+auto_refresh = st.checkbox("Enable Auto Mode", value=True)
+refresh_rate = st.slider("Refresh Interval (seconds)", 1, 10, 3)
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=df["timestamp"],
-                y=pd.to_numeric(df[value_col], errors="coerce"),
-                mode="lines+markers",
-                name=sensor
-            ))
-            fig.update_layout(title=sensor, xaxis_title="Time", yaxis_title="Value")
-            st.plotly_chart(fig, use_container_width=True)
+if auto_refresh:
+    graph_placeholder = st.empty()
+
+    for _ in range(200):  # Limit refresh cycles for safety
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        vitals = []
+
+        # Read ECG
+        if use_ecg:
+            ecg = loop.run_until_complete(ecg_sensor.read_data())
+            vitals.append(ecg)
+
+        # Read SpO2
+        if use_spo2:
+            spo2 = loop.run_until_complete(spo2_sensor.read_data())
+            vitals.append(spo2)
+
+        # Read BP
+        if use_bp:
+            bp_readings = loop.run_until_complete(bp_sensor.read_data())
+            vitals.extend(bp_readings if isinstance(bp_readings, list) else [bp_readings])
+
+        # Store vitals
+        for v in vitals:
+            data_manager.store_vital_sign(v)
+
+        # Get full history for plotting
+        all_history = data_manager.get_patient_vitals_history(patient_id, limit=50)
+        df = pd.DataFrame(all_history)
+
+        # Ensure timestamps are datetime
+        df["timestamp"] = pd.to_datetime(df.get("timestamp", datetime.now()), errors="coerce")
+
+        # Build Plotly figure
+        fig = go.Figure()
+
+        for sensor in ["ECG", "SpO2", "BP_SYS", "BP_DIA"]:
+            sensor_data = df[df["sensor"] == sensor]
+            if not sensor_data.empty:
+                fig.add_trace(go.Scatter(
+                    x=sensor_data["timestamp"],
+                    y=pd.to_numeric(sensor_data["value"], errors="coerce"),
+                    mode="lines+markers",
+                    name=sensor
+                ))
+
+        fig.update_layout(
+            title="📈 Live Multi-Sensor Monitor",
+            xaxis_title="Time",
+            yaxis_title="Value",
+            xaxis=dict(
+                tickformat="%H:%M:%S",
+                tickangle=-45
+            ),
+            legend=dict(orientation="h", y=-0.2)
+        )
+
+        graph_placeholder.plotly_chart(fig, use_container_width=True)
+
+        time.sleep(refresh_rate)
+
 
     # Download reports
     pdf_path = generate_pdf(vitals, prediction)
