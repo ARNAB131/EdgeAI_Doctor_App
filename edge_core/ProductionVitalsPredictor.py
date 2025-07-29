@@ -1,7 +1,6 @@
 import os
 import pickle
 import pandas as pd
-import streamlit as st  # For debug logging in Cloud
 
 class ProductionVitalsPredictor:
     """Predicts patient vitals trends"""
@@ -9,97 +8,51 @@ class ProductionVitalsPredictor:
     def __init__(self, config):
         model_path = config.model_path
 
-        # Ensure absolute path
         if not os.path.isabs(model_path):
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             model_path = os.path.join(base_dir, model_path)
 
-        # Load model safely
-        self.model = None
-        self.feature_names = []
-
         if not os.path.exists(model_path):
-            st.warning(f"⚠️ Model file not found at {model_path}. Using fallback model.")
+            print(f"⚠️ Model file not found at {model_path}. Using fallback.")
+            self.model = None
         else:
             with open(model_path, "rb") as f:
                 self.model = pickle.load(f)
-                if hasattr(self.model, "feature_names_in_"):
-                    self.feature_names = list(self.model.feature_names_in_)
-                else:
-                    # Define fallback
-                    self.feature_names = ["heart_rate", "bp_systolic", "bp_diastolic", "oxygen_saturation", "temperature"]
 
-    def _prepare_features(self, df: pd.DataFrame):
-        """Ensure DataFrame matches exactly model expected features."""
-        safe_df = pd.DataFrame(columns=self.feature_names)
-
-        for col in self.feature_names:
-            safe_df[col] = df[col] if col in df.columns else 0
-
-        safe_df = safe_df[self.feature_names]
-
-        # Debug: Show aligned columns in Streamlit logs
-        st.write("📊 Model Input Columns:", list(safe_df.columns))
-        st.write("📈 Model Input Values:", safe_df.tail(1).to_dict(orient="records"))
-
-        return safe_df
-
-    def predict(self, features: pd.DataFrame):
-        """Predict from features aligned with model."""
+    def predict(self, features_df: pd.DataFrame):
+        """Make prediction using model or dummy"""
         if self.model is None:
-            st.warning("⚠️ No model loaded. Returning dummy prediction.")
-            return [0] * len(features)
+            return [0] * len(features_df)  # dummy output
+        return self.model.predict(features_df)
 
-        safe_features = self._prepare_features(features)
-        return self.model.predict(safe_features)
+    def predict_trend(self, patient_id, history):
+        """Predict future trend from vitals history"""
+        if not history:
+            return None
 
-def predict_trend(self, patient_id, history):
-    """Predict trend for patient based on recent history."""
-    if not history:
-        return None
+        df = pd.DataFrame(history)
 
-    df_history = pd.DataFrame(history)
+        # Ensure numeric values for prediction
+        numeric_df = pd.DataFrame({
+            "heart_rate": pd.to_numeric(df[df["sensor"] == "ECG"]["value"], errors="coerce").tail(1).fillna(0),
+            "bp_systolic": pd.to_numeric(df[df["sensor"].isin(["BP_SYS", "BP"])]["value"].apply(
+                lambda x: str(x).split("/")[0] if "/" in str(x) else x
+            ), errors="coerce").tail(1).fillna(0),
+            "bp_diastolic": pd.to_numeric(df[df["sensor"].isin(["BP_DIA", "BP"])]["value"].apply(
+                lambda x: str(x).split("/")[1] if "/" in str(x) else x
+            ), errors="coerce").tail(1).fillna(0),
+            "oxygen_saturation": pd.to_numeric(df[df["sensor"] == "SpO2"]["value"], errors="coerce").tail(1).fillna(0),
+            "temperature": pd.Series([36.5])  # Placeholder (no temp sensor yet)
+        })
 
-    # Convert sensor readings to wide format
-    if "sensor" in df_history.columns:
-        df_pivot = df_history.pivot_table(
-            index="patient_id", 
-            columns="sensor", 
-            values="value", 
-            aggfunc="last"
-        ).reset_index()
-    else:
-        df_pivot = df_history.copy()
+        numeric_df = numeric_df.fillna(0)
 
-    # Rename to match model feature names
-    rename_map = {
-        "ECG": "heart_rate",
-        "BP_SYS": "bp_systolic",
-        "BP_DIA": "bp_diastolic",
-        "SpO2": "oxygen_saturation",
-        "Temp": "temperature"
-    }
-    df_pivot.rename(columns=rename_map, inplace=True)
+        y_pred = self.predict(numeric_df)
 
-    numeric_df = df_pivot.select_dtypes(include="number")
-
-    # If still empty, fallback to zeros
-    if numeric_df.empty:
-        numeric_df = pd.DataFrame([{
-            "heart_rate": 0,
-            "bp_systolic": 0,
-            "bp_diastolic": 0,
-            "oxygen_saturation": 0,
-            "temperature": 0
-        }])
-
-    prediction_value = self.predict(numeric_df)
-    risk_level = "high" if prediction_value[0] > 100 else "normal"
-
-    return {
-        "patient_id": patient_id,
-        "prediction_type": "trend",
-        "predicted_value": float(prediction_value[0]),
-        "confidence": 0.85,
-        "risk": risk_level
-    }
+        return {
+            "prediction_type": "Vitals Trend",
+            "predicted_value": float(y_pred[0]) if len(y_pred) else 0,
+            "confidence": 0.85,
+            "uncertainty": 0.15,
+            "risk_factors": []
+        }
