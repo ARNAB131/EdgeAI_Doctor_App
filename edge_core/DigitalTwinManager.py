@@ -1,6 +1,4 @@
 class DigitalTwinManager:
-    """Simulates a patient digital twin"""
-
     def __init__(self, predictor, data_manager):
         self.predictor = predictor
         self.data_manager = data_manager
