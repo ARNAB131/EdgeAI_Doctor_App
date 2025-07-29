@@ -53,7 +53,7 @@ use_spo2 = st.sidebar.checkbox("SpO2", True)
 use_bp = st.sidebar.checkbox("BP", True)
 
 # --------------------------
-# SIDEBAR - CSV UPLOAD
+# SIDEBAR - CSV UPLOAD WITH PREDICTION
 # --------------------------
 st.sidebar.subheader("📤 Upload Vitals CSV")
 uploaded = st.sidebar.file_uploader("Upload CSV", type=["csv"])
@@ -62,28 +62,40 @@ if uploaded:
     st.subheader("📄 Uploaded Data")
     st.dataframe(df_uploaded)
 
-    # --------------------------
-    # PREDICT FROM CSV
-    # --------------------------
-    if all(col in df_uploaded.columns for col in predictor.required_features):
-        try:
-            csv_predictions = predictor.predict(df_uploaded)
-            df_uploaded["Prediction"] = csv_predictions
+    # Prepare CSV for prediction
+    try:
+        df_for_pred = df_uploaded.copy()
 
-            st.subheader("🔮 Predictions from Uploaded Data")
-            st.dataframe(df_uploaded)
+        # Drop non-feature columns like timestamp, patient_id, etc.
+        cols_to_keep = predictor.required_features
+        df_for_pred = df_for_pred[[col for col in cols_to_keep if col in df_for_pred.columns]]
 
-            # Download predictions as CSV
-            st.download_button(
-                "📥 Download Predictions CSV",
-                df_uploaded.to_csv(index=False),
-                file_name="predictions.csv",
-                mime="text/csv"
-            )
-        except Exception as e:
-            st.error(f"❌ Prediction failed: {e}")
-    else:
-        st.warning(f"⚠️ Uploaded CSV is missing required columns: {predictor.required_features}")
+        # Ensure all required features exist
+        for col in predictor.required_features:
+            if col not in df_for_pred.columns:
+                df_for_pred[col] = 0  # Fill missing column with default
+
+        # Convert all to numeric
+        df_for_pred = df_for_pred.apply(pd.to_numeric, errors="coerce").fillna(0)
+
+        # Predict
+        csv_predictions = predictor.predict(df_for_pred)
+
+        # Append predictions to uploaded dataframe
+        df_uploaded["Prediction"] = csv_predictions
+
+        st.subheader("🔮 Predictions from Uploaded Data")
+        st.dataframe(df_uploaded)
+
+        st.download_button(
+            "📥 Download Predictions CSV",
+            df_uploaded.to_csv(index=False),
+            file_name="predictions.csv",
+            mime="text/csv"
+        )
+
+    except Exception as e:
+        st.error(f"❌ Prediction failed: {e}")
 
 # --------------------------
 # SIMULATE VITALS
