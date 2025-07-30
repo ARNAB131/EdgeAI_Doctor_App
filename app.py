@@ -185,17 +185,22 @@ if auto_refresh:
         df = pd.DataFrame(data_manager.get_patient_vitals_history(patient_id, limit=50))
         df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
 
-        fig = go.Figure()
+              fig = go.Figure()
         for sensor in ["ECG", "SpO2", "BP_SYS", "BP_DIA"]:
             sensor_data = df[df["sensor"] == sensor]
             if not sensor_data.empty:
                 fig.add_trace(go.Scatter(
                     x=sensor_data["timestamp"],
                     y=pd.to_numeric(sensor_data["value"], errors="coerce"),
-                    mode="lines+markers",
+                    mode="lines",
                     name=sensor,
-                    line=dict(color=sensor_colors.get(sensor, "gray"))  # Default to gray if not mapped
+                    line=dict(
+                        color=sensor_colors.get(sensor, "gray"),
+                        shape="hv" if sensor == "ECG" else "spline",  # Zig-zag ECG, smooth others
+                        width=2
+                    )
                 ))
+
 
         fig.update_layout(
             title="📈 Live Multi-Sensor Monitor",
