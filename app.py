@@ -57,6 +57,34 @@ use_spo2 = st.sidebar.checkbox("SpO2", True)
 use_bp = st.sidebar.checkbox("BP", True)
 
 # --------------------------
+# SIDEBAR - COLOR LEGEND
+# --------------------------
+st.sidebar.markdown("### 🎨 Vitals Color Legend")
+
+legend_html = """
+<div style='display: flex; flex-direction: column; font-size: 14px;'>
+    <div style='margin-bottom: 4px;'>
+        <span style='background-color: red; width: 12px; height: 12px; display: inline-block; margin-right: 8px;'></span>
+        ECG
+    </div>
+    <div style='margin-bottom: 4px;'>
+        <span style='background-color: blue; width: 12px; height: 12px; display: inline-block; margin-right: 8px;'></span>
+        SpO2
+    </div>
+    <div style='margin-bottom: 4px;'>
+        <span style='background-color: green; width: 12px; height: 12px; display: inline-block; margin-right: 8px;'></span>
+        BP_SYS
+    </div>
+    <div style='margin-bottom: 4px;'>
+        <span style='background-color: orange; width: 12px; height: 12px; display: inline-block; margin-right: 8px;'></span>
+        BP_DIA
+    </div>
+</div>
+"""
+
+st.sidebar.markdown(legend_html, unsafe_allow_html=True)
+
+# --------------------------
 # SIDEBAR - CSV UPLOAD WITH PREDICTION
 # --------------------------
 st.sidebar.subheader("📤 Upload Vitals CSV")
