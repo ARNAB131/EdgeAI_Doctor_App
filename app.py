@@ -185,7 +185,7 @@ if auto_refresh:
         df = pd.DataFrame(data_manager.get_patient_vitals_history(patient_id, limit=50))
         df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
 
-              fig = go.Figure()
+        fig = go.Figure()
         for sensor in ["ECG", "SpO2", "BP_SYS", "BP_DIA"]:
             sensor_data = df[df["sensor"] == sensor]
             if not sensor_data.empty:
@@ -196,11 +196,10 @@ if auto_refresh:
                     name=sensor,
                     line=dict(
                         color=sensor_colors.get(sensor, "gray"),
-                        shape="hv" if sensor == "ECG" else "spline",  # Zig-zag ECG, smooth others
+                        shape="hv" if sensor == "ECG" else "spline",  # Zig-zag ECG
                         width=2
                     )
                 ))
-
 
         fig.update_layout(
             title="📈 Live Multi-Sensor Monitor",
@@ -211,6 +210,7 @@ if auto_refresh:
         )
         graph_placeholder.plotly_chart(fig, use_container_width=True)
         time.sleep(refresh_rate)
+
 
 
 # --------------------------
