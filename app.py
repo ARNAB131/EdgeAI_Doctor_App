@@ -118,7 +118,7 @@ if st.button("📈 Read Selected Sensors"):
     st.success("✅ Simulation, Prediction & Alert done.")
 
 # --------------------------
-# LIVE MULTI-SENSOR GRAPH (using consistent value column)
+# LIVE MULTI-SENSOR GRAPH (Always uses value column)
 # --------------------------
 import time
 
@@ -126,67 +126,48 @@ st.subheader("📡 Live Vitals Monitoring")
 auto_refresh = st.checkbox("Enable Auto Mode", value=True)
 refresh_rate = st.slider("Refresh Interval (seconds)", 1, 10, 3)
 
-if auto_refresh:
-    graph_placeholder = st.empty()
+graph_placeholder = st.empty()
 
-    for _ in range(200):  # Safety limit
+if auto_refresh:
+    for _ in range(200):  # Safety loop limit
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
         vitals = []
 
-        # Read ECG
         if use_ecg:
-            ecg = loop.run_until_complete(ecg_sensor.read_data())
-            vitals.append(ecg)
-
-        # Read SpO2
+            vitals.append(loop.run_until_complete(ecg_sensor.read_data()))
         if use_spo2:
-            spo2 = loop.run_until_complete(spo2_sensor.read_data())
-            vitals.append(spo2)
-
-        # Read BP
+            vitals.append(loop.run_until_complete(spo2_sensor.read_data()))
         if use_bp:
             bp_readings = loop.run_until_complete(bp_sensor.read_data())
             vitals.extend(bp_readings if isinstance(bp_readings, list) else [bp_readings])
 
-        # Store vitals
         for v in vitals:
             data_manager.store_vital_sign(v)
 
-        # Get latest history
-        history = data_manager.get_patient_vitals_history(patient_id, limit=50)
-        df = pd.DataFrame(history)
-
-        if df.empty:
-            st.warning("⚠ No data available yet.")
-            time.sleep(refresh_rate)
-            continue
-
-        # Convert timestamp
+        df = pd.DataFrame(data_manager.get_patient_vitals_history(patient_id, limit=50))
         df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
 
-        # Create Plotly multi-line chart
         fig = go.Figure()
-        for sensor in df["sensor"].unique():
+        for sensor in ["ECG", "SpO2", "BP_SYS", "BP_DIA"]:
             sensor_data = df[df["sensor"] == sensor]
-            fig.add_trace(go.Scatter(
-                x=sensor_data["timestamp"],
-                y=pd.to_numeric(sensor_data["value"], errors="coerce"),
-                mode="lines+markers",
-                name=sensor
-            ))
+            if not sensor_data.empty:
+                fig.add_trace(go.Scatter(
+                    x=sensor_data["timestamp"],
+                    y=pd.to_numeric(sensor_data["value"], errors="coerce"),
+                    mode="lines+markers",
+                    name=sensor
+                ))
 
         fig.update_layout(
             title="📈 Live Multi-Sensor Monitor",
             xaxis_title="Time",
             yaxis_title="Value",
-            xaxis=dict(tickformat="%H:%M:%S", tickangle=-45),
+            xaxis=dict(tickformat="%H:%M:%S"),
             legend=dict(orientation="h", y=-0.2)
         )
-
         graph_placeholder.plotly_chart(fig, use_container_width=True)
-
         time.sleep(refresh_rate)
 
 # --------------------------
