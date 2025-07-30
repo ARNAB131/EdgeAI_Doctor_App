@@ -118,7 +118,7 @@ if st.button("📈 Read Selected Sensors"):
     st.success("✅ Simulation, Prediction & Alert done.")
 
 # --------------------------
-# LIVE MULTI-SENSOR GRAPH (Always uses value column)
+# LIVE MULTI-SENSOR GRAPH (Always uses value column) - Colored
 # --------------------------
 import time
 
@@ -127,6 +127,14 @@ auto_refresh = st.checkbox("Enable Auto Mode", value=True)
 refresh_rate = st.slider("Refresh Interval (seconds)", 1, 10, 3)
 
 graph_placeholder = st.empty()
+
+# Assign distinct colors for each sensor
+sensor_colors = {
+    "ECG": "red",         # Red for heart activity
+    "SpO2": "blue",       # Blue for oxygen
+    "BP_SYS": "green",    # Green for systolic BP
+    "BP_DIA": "orange"    # Orange for diastolic BP
+}
 
 if auto_refresh:
     for _ in range(200):  # Safety loop limit
@@ -157,7 +165,8 @@ if auto_refresh:
                     x=sensor_data["timestamp"],
                     y=pd.to_numeric(sensor_data["value"], errors="coerce"),
                     mode="lines+markers",
-                    name=sensor
+                    name=sensor,
+                    line=dict(color=sensor_colors.get(sensor, "gray"))  # Default to gray if not mapped
                 ))
 
         fig.update_layout(
@@ -169,6 +178,7 @@ if auto_refresh:
         )
         graph_placeholder.plotly_chart(fig, use_container_width=True)
         time.sleep(refresh_rate)
+
 
 # --------------------------
 # SIDEBAR SUMMARY
