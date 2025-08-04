@@ -146,33 +146,35 @@ if st.button("📈 Read Selected Sensors"):
     st.success("✅ Simulation, Prediction & Alert done.")
 
 # --------------------------
-# LIVE MULTI-SENSOR GRAPH (Descriptive ICU Style)
+# LIVE MULTI-SENSOR GRAPH + ICU GAUGES
 # --------------------------
 import time
 
-st.subheader("📡 Live Vitals Monitoring (ICU Style)")
+st.subheader("📡 Live Vitals Monitoring")
 auto_refresh = st.checkbox("Enable Auto Mode", value=True)
 refresh_rate = st.slider("Refresh Interval (seconds)", 1, 10, 3)
 
 graph_placeholder = st.empty()
 desc_placeholder = st.empty()
+gauge_placeholder = st.empty()
 
+# Colors
 sensor_colors = {
-    "ECG": "red",       # Heart activity
-    "SpO2": "blue",     # Oxygen
-    "BP_SYS": "green",  # Systolic BP
-    "BP_DIA": "orange"  # Diastolic BP
+    "ECG": "red",
+    "SpO2": "blue",
+    "BP_SYS": "green",
+    "BP_DIA": "orange"
 }
 
-safe_ranges = {
-    "ECG": (60, 100),
-    "SpO2": (95, 100),
-    "BP_SYS": (90, 130),
-    "BP_DIA": (60, 90)
+ranges = {
+    "ECG": {"safe": (60, 100), "borderline": (50, 110)},
+    "SpO2": {"safe": (95, 100), "borderline": (90, 94)},
+    "BP_SYS": {"safe": (90, 130), "borderline": (80, 140)},
+    "BP_DIA": {"safe": (60, 90), "borderline": (50, 95)}
 }
 
 if auto_refresh:
-    for _ in range(200):  # Safety loop
+    for _ in range(200):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -193,31 +195,39 @@ if auto_refresh:
 
         fig = go.Figure()
         alert_messages = []
+        latest_values = {}
 
         for sensor in ["ECG", "SpO2", "BP_SYS", "BP_DIA"]:
             sensor_data = df[df["sensor"] == sensor]
             if not sensor_data.empty:
                 y_values = pd.to_numeric(sensor_data["value"], errors="coerce")
+                latest_values[sensor] = y_values.iloc[-1]
+
                 fig.add_trace(go.Scatter(
                     x=sensor_data["timestamp"],
                     y=y_values,
                     mode="lines+markers",
                     name=sensor,
-                    line=dict(color=sensor_colors.get(sensor, "gray"))
+                    line=dict(color=sensor_colors[sensor])
                 ))
 
-                # Add shaded safe zones
-                low, high = safe_ranges.get(sensor, (None, None))
-                if low and high:
-                    fig.add_hrect(y0=low, y1=high, fillcolor="green", opacity=0.1, line_width=0)
+                safe_low, safe_high = ranges[sensor]["safe"]
+                border_low, border_high = ranges[sensor]["borderline"]
 
-                # Alerts
-                latest_value = y_values.iloc[-1]
-                if latest_value < low or latest_value > high:
-                    alert_messages.append(f"⚠ {sensor}: {latest_value} (Out of Range)")
+                fig.add_hrect(y0=safe_low, y1=safe_high, fillcolor="green", opacity=0.1, line_width=0)
+                fig.add_hrect(y0=border_low, y1=safe_low, fillcolor="yellow", opacity=0.1, line_width=0)
+                fig.add_hrect(y0=safe_high, y1=border_high, fillcolor="yellow", opacity=0.1, line_width=0)
+                fig.add_hrect(y0=border_high, y1=max(y_values)+10, fillcolor="red", opacity=0.1, line_width=0)
+                fig.add_hrect(y0=min(y_values)-10, y1=border_low, fillcolor="red", opacity=0.1, line_width=0)
+
+                latest_value = latest_values[sensor]
+                if latest_value < border_low or latest_value > border_high:
+                    alert_messages.append(f"🚨 {sensor}: {latest_value} (Critical)")
+                elif latest_value < safe_low or latest_value > safe_high:
+                    alert_messages.append(f"⚠ {sensor}: {latest_value} (Borderline)")
 
         fig.update_layout(
-            title="📈 ICU Style Live Multi-Sensor Monitor",
+            title="📈 ICU Live Multi-Sensor Monitor",
             xaxis_title="Time",
             yaxis_title="Value",
             xaxis=dict(tickformat="%H:%M:%S"),
@@ -226,13 +236,31 @@ if auto_refresh:
 
         graph_placeholder.plotly_chart(fig, use_container_width=True)
 
-        # Descriptive status
         if alert_messages:
             desc_placeholder.error("\n".join(alert_messages))
         else:
             desc_placeholder.success("✅ All vitals in safe range.")
 
+        # --------------------------
+        # ICU Digital Gauges
+        # --------------------------
+        gauge_cols = gauge_placeholder.columns(4)
+        for i, sensor in enumerate(["ECG", "SpO2", "BP_SYS", "BP_DIA"]):
+            if sensor in latest_values:
+                val = latest_values[sensor]
+                color = sensor_colors[sensor]
+                gauge_cols[i].markdown(
+                    f"""
+                    <div style='text-align:center; padding:10px; background-color:black; border-radius:10px;'>
+                        <h4 style='color:white'>{sensor}</h4>
+                        <h2 style='color:{color}'>{val:.1f}</h2>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
         time.sleep(refresh_rate)
+
 
 
 
