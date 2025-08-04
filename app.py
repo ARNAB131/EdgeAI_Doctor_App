@@ -146,27 +146,33 @@ if st.button("📈 Read Selected Sensors"):
     st.success("✅ Simulation, Prediction & Alert done.")
 
 # --------------------------
-# LIVE MULTI-SENSOR GRAPH (Descriptive)
+# LIVE MULTI-SENSOR GRAPH (Descriptive ICU Style)
 # --------------------------
 import time
 
-st.subheader("📡 Live Vitals Monitoring (Descriptive Mode)")
+st.subheader("📡 Live Vitals Monitoring (ICU Style)")
 auto_refresh = st.checkbox("Enable Auto Mode", value=True)
 refresh_rate = st.slider("Refresh Interval (seconds)", 1, 10, 3)
 
 graph_placeholder = st.empty()
 desc_placeholder = st.empty()
 
-# Sensor colors
 sensor_colors = {
-    "ECG": "red",
-    "SpO2": "blue",
-    "BP_SYS": "green",
-    "BP_DIA": "orange"
+    "ECG": "red",       # Heart activity
+    "SpO2": "blue",     # Oxygen
+    "BP_SYS": "green",  # Systolic BP
+    "BP_DIA": "orange"  # Diastolic BP
+}
+
+safe_ranges = {
+    "ECG": (60, 100),
+    "SpO2": (95, 100),
+    "BP_SYS": (90, 130),
+    "BP_DIA": (60, 90)
 }
 
 if auto_refresh:
-    for _ in range(200):  # Safety limit
+    for _ in range(200):  # Safety loop
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -185,34 +191,33 @@ if auto_refresh:
         df = pd.DataFrame(data_manager.get_patient_vitals_history(patient_id, limit=50))
         df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
 
-        # Plot graph
         fig = go.Figure()
         alert_messages = []
 
         for sensor in ["ECG", "SpO2", "BP_SYS", "BP_DIA"]:
             sensor_data = df[df["sensor"] == sensor]
             if not sensor_data.empty:
+                y_values = pd.to_numeric(sensor_data["value"], errors="coerce")
                 fig.add_trace(go.Scatter(
                     x=sensor_data["timestamp"],
-                    y=pd.to_numeric(sensor_data["value"], errors="coerce"),
+                    y=y_values,
                     mode="lines+markers",
                     name=sensor,
                     line=dict(color=sensor_colors.get(sensor, "gray"))
                 ))
 
-                # Descriptive alerts
-                latest_value = pd.to_numeric(sensor_data["value"], errors="coerce").iloc[-1]
-                if sensor == "ECG" and (latest_value < 60 or latest_value > 100):
-                    alert_messages.append(f"⚠ ECG: Abnormal heart rate ({latest_value} bpm)")
-                if sensor == "SpO2" and latest_value < 95:
-                    alert_messages.append(f"⚠ SpO2: Low oxygen level ({latest_value}%)")
-                if sensor == "BP_SYS" and latest_value > 130:
-                    alert_messages.append(f"⚠ BP Systolic: High ({latest_value} mmHg)")
-                if sensor == "BP_DIA" and latest_value > 90:
-                    alert_messages.append(f"⚠ BP Diastolic: High ({latest_value} mmHg)")
+                # Add shaded safe zones
+                low, high = safe_ranges.get(sensor, (None, None))
+                if low and high:
+                    fig.add_hrect(y0=low, y1=high, fillcolor="green", opacity=0.1, line_width=0)
+
+                # Alerts
+                latest_value = y_values.iloc[-1]
+                if latest_value < low or latest_value > high:
+                    alert_messages.append(f"⚠ {sensor}: {latest_value} (Out of Range)")
 
         fig.update_layout(
-            title="📈 Live Multi-Sensor Monitor",
+            title="📈 ICU Style Live Multi-Sensor Monitor",
             xaxis_title="Time",
             yaxis_title="Value",
             xaxis=dict(tickformat="%H:%M:%S"),
@@ -221,14 +226,13 @@ if auto_refresh:
 
         graph_placeholder.plotly_chart(fig, use_container_width=True)
 
-        # Display descriptive status
+        # Descriptive status
         if alert_messages:
             desc_placeholder.error("\n".join(alert_messages))
         else:
-            desc_placeholder.success("✅ All vitals within normal range.")
+            desc_placeholder.success("✅ All vitals in safe range.")
 
         time.sleep(refresh_rate)
-
 
 
 
