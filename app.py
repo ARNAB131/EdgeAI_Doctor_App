@@ -146,31 +146,31 @@ if st.button("📈 Read Selected Sensors"):
     st.success("✅ Simulation, Prediction & Alert done.")
 
 # --------------------------
-# LIVE MULTI-SENSOR GRAPH (Always uses value column) - Colored
+# LIVE MULTI-SENSOR GRAPH (Descriptive)
 # --------------------------
 import time
 
-st.subheader("📡 Live Vitals Monitoring")
+st.subheader("📡 Live Vitals Monitoring (Descriptive Mode)")
 auto_refresh = st.checkbox("Enable Auto Mode", value=True)
 refresh_rate = st.slider("Refresh Interval (seconds)", 1, 10, 3)
 
 graph_placeholder = st.empty()
+desc_placeholder = st.empty()
 
-# Assign distinct colors for each sensor
+# Sensor colors
 sensor_colors = {
-    "ECG": "red",         # Red for heart activity
-    "SpO2": "blue",       # Blue for oxygen
-    "BP_SYS": "green",    # Green for systolic BP
-    "BP_DIA": "orange"    # Orange for diastolic BP
+    "ECG": "red",
+    "SpO2": "blue",
+    "BP_SYS": "green",
+    "BP_DIA": "orange"
 }
 
 if auto_refresh:
-    for _ in range(200):  # Safety loop limit
+    for _ in range(200):  # Safety limit
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
         vitals = []
-
         if use_ecg:
             vitals.append(loop.run_until_complete(ecg_sensor.read_data()))
         if use_spo2:
@@ -185,21 +185,31 @@ if auto_refresh:
         df = pd.DataFrame(data_manager.get_patient_vitals_history(patient_id, limit=50))
         df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
 
+        # Plot graph
         fig = go.Figure()
+        alert_messages = []
+
         for sensor in ["ECG", "SpO2", "BP_SYS", "BP_DIA"]:
             sensor_data = df[df["sensor"] == sensor]
             if not sensor_data.empty:
                 fig.add_trace(go.Scatter(
                     x=sensor_data["timestamp"],
                     y=pd.to_numeric(sensor_data["value"], errors="coerce"),
-                    mode="lines",
+                    mode="lines+markers",
                     name=sensor,
-                    line=dict(
-                        color=sensor_colors.get(sensor, "gray"),
-                        shape="hv" if sensor == "ECG" else "spline",  # Zig-zag ECG
-                        width=2
-                    )
+                    line=dict(color=sensor_colors.get(sensor, "gray"))
                 ))
+
+                # Descriptive alerts
+                latest_value = pd.to_numeric(sensor_data["value"], errors="coerce").iloc[-1]
+                if sensor == "ECG" and (latest_value < 60 or latest_value > 100):
+                    alert_messages.append(f"⚠ ECG: Abnormal heart rate ({latest_value} bpm)")
+                if sensor == "SpO2" and latest_value < 95:
+                    alert_messages.append(f"⚠ SpO2: Low oxygen level ({latest_value}%)")
+                if sensor == "BP_SYS" and latest_value > 130:
+                    alert_messages.append(f"⚠ BP Systolic: High ({latest_value} mmHg)")
+                if sensor == "BP_DIA" and latest_value > 90:
+                    alert_messages.append(f"⚠ BP Diastolic: High ({latest_value} mmHg)")
 
         fig.update_layout(
             title="📈 Live Multi-Sensor Monitor",
@@ -208,8 +218,17 @@ if auto_refresh:
             xaxis=dict(tickformat="%H:%M:%S"),
             legend=dict(orientation="h", y=-0.2)
         )
+
         graph_placeholder.plotly_chart(fig, use_container_width=True)
+
+        # Display descriptive status
+        if alert_messages:
+            desc_placeholder.error("\n".join(alert_messages))
+        else:
+            desc_placeholder.success("✅ All vitals within normal range.")
+
         time.sleep(refresh_rate)
+
 
 
 
